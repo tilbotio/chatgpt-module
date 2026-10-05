@@ -3,9 +3,8 @@ import multiprocessing
 import os
 
 from dotenv import load_dotenv
-from fastapi import FastAPI
+from fastapi import FastAPI, File, Form, UploadFile
 from openai import OpenAI
-from pydantic import BaseModel
 from typing import Any, Dict
 from uvicorn import run
 
@@ -18,13 +17,6 @@ PORT = os.getenv("PORT", 8081)
 app = FastAPI()
 
 
-class ChatRequest(BaseModel):
-    user_input: str = ""
-    prompt: str | None = None
-    intent_options: list[str] | None = None
-    key_user_account: str | None = None
-
-
 def parse_json_from_response(response) -> Dict[str, Any]:
     # Chat Completions JSON-schema responses are normally valid JSON in message.content.
     content = response.choices[0].message.content
@@ -35,13 +27,14 @@ async def healthcheck():
     return {"status": "ok"}
 
 @app.post("/")
-async def get_chatgpt_response(request: ChatRequest):
-    user_input = request.user_input
-    prompt = request.prompt
-    intent_options = request.intent_options
-    key_user_account = request.key_user_account
+async def get_chatgpt_response(image: UploadFile = File(None),
+    user_input: str = Form(""),
+    prompt: str | None = Form(None),
+    intent_options: str | None = Form(None),
+    key_user_account: str | None = Form(None),
+):
 
-    print(intent_options)
+    intent_options_parsed = json.loads(intent_options) if intent_options else []
 
     api_key = OPENAI_API_KEY
     if key_user_account is not None:
@@ -51,7 +44,7 @@ async def get_chatgpt_response(request: ChatRequest):
 
     input_text = user_input or prompt or ""
 
-    if len(intent_options) > 0:
+    if len(intent_options_parsed) > 0:
         description = "Find the best matching intent from the provided options. If none match, return 'unknown'."
         if prompt is not None:
             description = prompt
@@ -67,7 +60,7 @@ async def get_chatgpt_response(request: ChatRequest):
                     "properties": {
                         "intent": {
                             "type": "string",
-                            "enum": intent_options,
+                            "enum": intent_options_parsed,
                             "description": description
                         }
                     },
@@ -84,7 +77,7 @@ async def get_chatgpt_response(request: ChatRequest):
         )
 
         results = json.loads(message.output_text)
-        if results["intent"] not in intent_options or results["intent"] == "unknown":
+        if results["intent"] not in intent_options_parsed or results["intent"] == "unknown":
             return None
         else:
             return {"intent": results["intent"], "connector_label": results["intent"]}
