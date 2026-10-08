@@ -12,7 +12,7 @@ load_dotenv()
 
 OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', None)
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", None)
-PORT = os.getenv("PORT", 8081)
+PORT = int(os.getenv("PORT", 8081))
 
 app = FastAPI()
 
@@ -37,7 +37,7 @@ async def get_chatgpt_response(image: UploadFile = File(None),
     intent_options_parsed = json.loads(intent_options) if intent_options else []
 
     api_key = OPENAI_API_KEY
-    if key_user_account is not None:
+    if key_user_account is not None and api_key is not None:
         api_key += "_" + key_user_account
 
     client = OpenAI(api_key=api_key)
