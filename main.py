@@ -88,7 +88,7 @@ async def get_chatgpt_response(image: UploadFile = File(None),
             input=input_text
         )
 
-        return {"intent": "", "connector_label": message.output_text}
+        return {"intent": message.output_text, "connector_label": message.output_text}
 
 if __name__ == "__main__":
     multiprocessing.freeze_support()  # For Windows support
