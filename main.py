@@ -22,6 +22,24 @@ def parse_json_from_response(response) -> Dict[str, Any]:
     content = response.choices[0].message.content
     return json.loads(content)
 
+def parse_history(messages: str | None) -> list[Dict[str, str]]:
+    """Parse the chat history sent by Tilbot: a JSON list of {"role", "content"}."""
+    if not messages:
+        return []
+    try:
+        parsed = json.loads(messages)
+    except json.JSONDecodeError:
+        return []
+    if not isinstance(parsed, list):
+        return []
+    return [
+        {"role": m["role"], "content": m["content"]}
+        for m in parsed
+        if isinstance(m, dict)
+        and m.get("role") in ("user", "assistant")
+        and isinstance(m.get("content"), str)
+    ]
+
 @app.get("/healthcheck")
 async def healthcheck():
     return {"status": "ok"}
@@ -32,9 +50,11 @@ async def get_chatgpt_response(image: UploadFile = File(None),
     prompt: str | None = Form(None),
     intent_options: str | None = Form(None),
     key_user_account: str | None = Form(None),
+    messages: str | None = Form(None),
 ):
 
     intent_options_parsed = json.loads(intent_options) if intent_options else []
+    history = parse_history(messages)
 
     api_key = OPENAI_API_KEY
     if key_user_account is not None and api_key is not None:
@@ -43,6 +63,9 @@ async def get_chatgpt_response(image: UploadFile = File(None),
     client = OpenAI(api_key=api_key)
 
     input_text = user_input or prompt or ""
+    model_input = history + [{"role": "user", "content": input_text}] if history else input_text
+
+    print(model_input)
 
     if len(intent_options_parsed) > 0:
         description = "Find the best matching intent from the provided options. If none match, return 'unknown'."
@@ -72,7 +95,7 @@ async def get_chatgpt_response(image: UploadFile = File(None),
         message = client.responses.parse(
             model=OPENAI_MODEL,
             instructions=prompt,
-            input=input_text,
+            input=model_input,
             text=response_format
         )
 
@@ -85,7 +108,7 @@ async def get_chatgpt_response(image: UploadFile = File(None),
         message = client.responses.parse(
             model=OPENAI_MODEL,
             instructions=prompt,
-            input=input_text
+            input=model_input
         )
 
         return {"intent": message.output_text, "connector_label": message.output_text}
