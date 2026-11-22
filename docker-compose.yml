@@ -1,28 +1,5 @@
 name: tilbot
 services:
-  yarn-install:
-    extends:
-      file: ../../docker-compose.yml
-      service: yarn-install
-
-  frontend:
-    extends:
-      file: ../../docker-compose.yml
-      service: frontend
-
-  backend:
-    extends:
-      file: ../../docker-compose.yml
-      service: backend
-    networks:
-      tbnetwork:
-      default:
-
-  mongo:
-    extends:
-      file: ../../docker-compose.yml
-      service: mongo
-
   chatgpt:
     build:
       context: .
@@ -30,21 +7,21 @@ services:
         PORT: ${PORT}
     restart: unless-stopped
     environment:
-      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      OPENAI_API_KEY_FILE: /run/secrets/chatgpt_default_openai_api_key
+      OPENAI_API_KEY_FILES: ${OPENAI_API_KEY_FILES:-}
       OPENAI_MODEL: ${OPENAI_MODEL}
       PORT: ${PORT}
+    secrets:
+      - chatgpt_default_openai_api_key
     networks:
-      tbnetwork:
-    volumes:
-      - .:/app
+      tbpluginnetwork:
 
 networks:
-  tbnetwork:
+  tbpluginnetwork:
     driver: bridge
     ipam:
-      config:
-        - subnet: 172.99.0.0/16
       driver: default
 
-volumes:
-  mongodb:
+secrets:
+  chatgpt_default_openai_api_key:
+    file: ${CHATGPT_DEFAULT_OPENAI_API_KEY_FILE:-../../secrets/chatgpt_default_openai_api_key}

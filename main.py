@@ -1,19 +1,46 @@
 import json
 import multiprocessing
 import os
+from pathlib import Path
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from openai import OpenAI
 from typing import Any, Dict
 from uvicorn import run
 
 load_dotenv()
 
-OPENAI_API_KEY = os.getenv('OPENAI_API_KEY', None)
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", None)
 PORT = int(os.getenv("PORT", 8081))
 
+
+def read_api_key(path: str) -> str:
+    key = Path(path).read_text(encoding="utf-8").strip()
+    if not key:
+        raise ValueError(f"OpenAI API key file is empty: {path}")
+    return key
+
+
+def load_api_keys() -> tuple[str | None, dict[str, str]]:
+    default_file = os.getenv("OPENAI_API_KEY_FILE")
+    default_key = read_api_key(default_file) if default_file else os.getenv("OPENAI_API_KEY")
+    if default_key is not None:
+        default_key = default_key.strip()
+        if not default_key:
+            raise ValueError("The default OpenAI API key is empty")
+
+    raw_mapping = os.getenv("OPENAI_API_KEY_FILES") or "{}"
+    mapping = json.loads(raw_mapping)
+    if not isinstance(mapping, dict) or any(
+        not isinstance(account, str) or not account or not isinstance(path, str) or not path
+        for account, path in mapping.items()
+    ):
+        raise ValueError("OPENAI_API_KEY_FILES must map non-empty account IDs to key file paths")
+    return default_key, {account: read_api_key(path) for account, path in mapping.items()}
+
+
+OPENAI_API_KEY, OPENAI_ACCOUNT_KEYS = load_api_keys()
 app = FastAPI()
 
 
@@ -56,9 +83,14 @@ async def get_chatgpt_response(image: UploadFile = File(None),
     intent_options_parsed = json.loads(intent_options) if intent_options else []
     history = parse_history(messages)
 
-    api_key = OPENAI_API_KEY
-    if key_user_account is not None and api_key is not None:
-        api_key += "_" + key_user_account
+    if key_user_account is None:
+        api_key = OPENAI_API_KEY
+        if api_key is None:
+            raise HTTPException(status_code=503, detail="Default OpenAI API key is not configured")
+    else:
+        api_key = OPENAI_ACCOUNT_KEYS.get(key_user_account)
+        if api_key is None:
+            raise HTTPException(status_code=403, detail="Unknown OpenAI account")
 
     client = OpenAI(api_key=api_key)
 
